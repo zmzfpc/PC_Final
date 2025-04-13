@@ -1,63 +1,59 @@
 #!/bin/bash
-# run_all.sh
+# run.sh
 # -------------
-# This script automates the build and execution of the GraphRAG GPU retrieval pipeline.
-# It runs the following steps:
-#   1. Convert OGB BioKG to CSR format using the provided Python script.
-#   2. Compile the CUDA/C++ components:
-#         - graph_loader.cu (with cnpy)
-#         - event_retrieval.cu
-#         - timestep_retrieval.cu
-#         - metrics_logger.cpp (for performance logging)
-#   3. Run the compiled executables to verify the graph loading,
-#      event-driven, and fixed time-step retrieval.
-#   4. Run the metrics logger to generate a CSV file with performance data.
-#   5. Generate and display latency plots using the Python analysis script.
+# This script automates the build and execution of the GraphRAG GPU retrieval pipeline,
+# using the C versions of the project components. It performs the following steps:
+#
+#   1. Run the Python conversion step (if needed) to convert BioKG to CSR format.
+#      (This example uses convert_biokg_to_csr.py which should now produce binary files.)
+#   2. Create a build directory.
+#   3. Compile the CUDA/C source files:
+#         - gpu/graph_loader.cu
+#         - gpu/event_retrieval.cu
+#         - gpu/timestep_retrieval.cu
+#         - benchmarks/metrics_logger.c
+#   4. Run the compiled executables.
+#   5. Generate a latency plot using a Python script.
 #
 # Usage:
-#   ./run_all.sh
+#   ./run.sh
 
-# Ensure the script exits if any command fails.
+# Exit script if any command fails.
 set -e
 
-# Create a build directory if it does not exist.
+# Create the build directory if it doesn't exist.
 BUILD_DIR="./build"
 if [ ! -d "$BUILD_DIR" ]; then
     mkdir -p "$BUILD_DIR"
 fi
 
-# -----------------------------------------
-# Step 1: Convert OGB BioKG to CSR format
-# -----------------------------------------
+# ---------------------------------------------
+# Step 1: Convert BioKG to CSR in binary format
+# ---------------------------------------------
 echo "Converting BioKG to CSR format..."
-# Adjust --node_type and --output_dir as needed.
+# This command runs a Python script that should output binary CSR files 
+# (csr_indptr.bin, csr_indices.bin) into the data/biokg_csr directory.
 python3 python/convert_biokg_to_csr.py --node_type gene --output_dir ./data/biokg_csr
 echo "Conversion completed."
 
-# ---------------------------------------------------
-# Step 2: Compile CUDA/C++ components using nvcc
-# ---------------------------------------------------
-# (Make sure cnpy.cpp and cnpy.h are in the correct location relative to graph_loader.cu.)
+# ---------------------------------------------
+# Step 2: Compile the CUDA/C components
+# ---------------------------------------------
+echo "Compiling gpu/graph_loader.cu (C version)..."
+nvcc -x c gpu/graph_loader.cu -o "$BUILD_DIR/graph_loader"
 
-echo "Compiling graph_loader.cu..."
-nvcc gpu/graph_loader.cu cnpy.cpp -o "$BUILD_DIR/graph_loader"
-echo "graph_loader compiled successfully."
+echo "Compiling gpu/event_retrieval.cu (C version)..."
+nvcc -x c gpu/event_retrieval.cu -o "$BUILD_DIR/event_retrieval"
 
-echo "Compiling event_retrieval.cu..."
-nvcc gpu/event_retrieval.cu -o "$BUILD_DIR/event_retrieval"
-echo "event_retrieval compiled successfully."
+echo "Compiling gpu/timestep_retrieval.cu (C version)..."
+nvcc -x c gpu/timestep_retrieval.cu -o "$BUILD_DIR/timestep_retrieval"
 
-echo "Compiling timestep_retrieval.cu..."
-nvcc gpu/timestep_retrieval.cu -o "$BUILD_DIR/timestep_retrieval"
-echo "timestep_retrieval compiled successfully."
+echo "Compiling benchmarks/metrics_logger.c (C version)..."
+nvcc -x c benchmarks/metrics_logger.c -o "$BUILD_DIR/metrics_logger"
 
-echo "Compiling metrics_logger.cpp..."
-nvcc benchmarks/metrics_logger.cpp -o "$BUILD_DIR/metrics_logger"
-echo "metrics_logger compiled successfully."
-
-# ---------------------------------------------------
-# Step 3: Run the compiled executables to verify
-# ---------------------------------------------------
+# ---------------------------------------------
+# Step 3: Run the compiled executables
+# ---------------------------------------------
 echo "Running graph_loader..."
 "$BUILD_DIR/graph_loader"
 
@@ -67,15 +63,12 @@ echo "Running event_retrieval..."
 echo "Running timestep_retrieval..."
 "$BUILD_DIR/timestep_retrieval"
 
-# ---------------------------------------------------
-# Step 4: Run the metrics logger to collect performance data
-# ---------------------------------------------------
-echo "Running metrics_logger to generate performance metrics..."
+echo "Running metrics_logger..."
 "$BUILD_DIR/metrics_logger"
 
-# ---------------------------------------------------
-# Step 5: Plot latency metrics from metrics_logger.csv
-# ---------------------------------------------------
+# ---------------------------------------------
+# Step 4: Generate and view latency plots
+# ---------------------------------------------
 echo "Generating latency plot..."
 python3 analysis/latency_plot.py
 
